@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
-	_ "strings"
 	"syscall"
 
 	"github.com/joho/godotenv"
@@ -22,8 +25,55 @@ import (
 )
 
 const (
-	OpenAIAPIKeyEnvVar = "OPENAI_API_KEY"
+	OpenAIAPIKeyEnvVar   = "OPENAI_API_KEY"
+	HuggingfaceKeyEnvVar = "HUGGINGFACE_API_KEY"
 )
+
+type HuggingFaceResponse struct {
+	GeneratedText string `json:"generated_text"`
+}
+
+func GetHuggingFaceResponse(prompt string) (string, error) {
+	apiKey := os.Getenv(HuggingfaceKeyEnvVar)
+	url := "https://api-inference.huggingface.co/models/gpt2"
+	requestBody, err := json.Marshal(map[string]string{
+		"inputs": prompt,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	var response []HuggingFaceResponse
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return "", err
+	}
+
+	if len(response) > 0 {
+		return response[0].GeneratedText, nil
+	}
+
+	return "", fmt.Errorf("no response from Hugging Face")
+}
 
 func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interface{}) {
 	return func(evt interface{}) {
@@ -35,12 +85,17 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 				client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 					Conversation: proto.String("pong"),
 				})
-			} else if strings.HasPrefix(messageBody, "\\gpt") {
+			} else if strings.HasPrefix(messageBody, "complete:") {
 				// Extract the command arguments
 				args := strings.Fields(messageBody)[1:]
 				// Join the arguments to form the input message for GPT
 				input := strings.Join(args, " ")
-				response := GenerateGPTResponse(input, gpt)
+				// response := GenerateGPTResponse(input, gpt)
+				response, err := GetHuggingFaceResponse(input)
+				if err != nil {
+					fmt.Printf("ChatCompletion error: %v\n", err)
+					return
+				}
 				if len(response) > 0 {
 					client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 						Conversation: proto.String(response),
@@ -53,16 +108,12 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 
 func GenerateGPTResponse(input string, gpt *openai.Client) string {
 
-	resp, err := gpt.CreateChatCompletion(
+	resp, err := gpt.CreateCompletion(
 		context.Background(),
-		openai.ChatCompletionRequest{
-			Model: openai.GPT3TextDavinci002,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: input,
-				},
-			},
+		openai.CompletionRequest{
+			Model:     openai.GPT3TextDavinci002,
+			MaxTokens: 4097,
+			Prompt:    input,
 		},
 	)
 	if err != nil {
@@ -73,7 +124,7 @@ func GenerateGPTResponse(input string, gpt *openai.Client) string {
 		fmt.Println("Failed to generate GPT response:", err)
 		return ""
 	}
-	return resp.Choices[0].Message.Content
+	return resp.Choices[0].Text
 }
 
 func main() {
