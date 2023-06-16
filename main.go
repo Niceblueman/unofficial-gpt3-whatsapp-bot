@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	_ "strings"
 	"syscall"
 
-	_ "github.com/mattn/go-sqlite3"
-
+	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal"
 	openai "github.com/sashabaranov/go-openai"
@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	OpenAIAPIKey = "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"
+	OpenAIAPIKeyEnvVar = "OPENAI_API_KEY"
 )
 
 func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interface{}) {
@@ -35,8 +35,12 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 				client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 					Conversation: proto.String("pong"),
 				})
-			} else {
-				response := GenerateGPTResponse(messageBody, gpt)
+			} else if strings.HasPrefix(messageBody, "\\gpt") {
+				// Extract the command arguments
+				args := strings.Fields(messageBody)[1:]
+				// Join the arguments to form the input message for GPT
+				input := strings.Join(args, " ")
+				response := GenerateGPTResponse(input, gpt)
 				if len(response) > 0 {
 					client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 						Conversation: proto.String(response),
@@ -73,6 +77,10 @@ func GenerateGPTResponse(input string, gpt *openai.Client) string {
 }
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		panic("Failed to load .env file")
+	}
 	dbLog := waLog.Stdout("Database", "DEBUG", true)
 	container, err := sqlstore.New("sqlite3", "file:store.db?_foreign_keys=on", dbLog)
 	if err != nil {
@@ -86,9 +94,9 @@ func main() {
 
 	clientLog := waLog.Stdout("Client", "INFO", true)
 	client := whatsmeow.NewClient(deviceStore, clientLog)
-
 	// Initialize OpenAI GPT
-	gpt := openai.NewClient(OpenAIAPIKey)
+	openaiAPIKey := os.Getenv(OpenAIAPIKeyEnvVar)
+	gpt := openai.NewClient(openaiAPIKey)
 	if err != nil {
 		panic(err)
 	}
