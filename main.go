@@ -56,7 +56,7 @@ func GenerateGPTResponse(input string, gpt *openai.Client) string {
 	resp, err := gpt.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{
-			Model: openai.GPT3Dot5Turbo,
+			Model: openai.GPT3TextDavinci002,
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleUser,
