@@ -31,11 +31,16 @@ const (
 
 type HuggingFaceResponse struct {
 	GeneratedText string `json:"generated_text"`
+	conversation  struct {
+		generated_responses []string `json:"generated_responses"`
+		past_user_inputs    []string `json:"past_user_inputs"`
+	} `json:"conversation"`
+	warnings []string `json:"warnings"`
 }
 
 func GetHuggingFaceResponse(prompt string) (string, error) {
 	apiKey := os.Getenv(HuggingfaceKeyEnvVar)
-	url := "https://api-inference.huggingface.co/models/gpt2"
+	url := "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium"
 	requestBody, err := json.Marshal(map[string]string{
 		"inputs": prompt,
 	})
@@ -61,15 +66,14 @@ func GetHuggingFaceResponse(prompt string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
-	var response []HuggingFaceResponse
+	var response HuggingFaceResponse
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return "", err
 	}
-
-	if len(response) > 0 {
-		return response[0].GeneratedText, nil
+	println("response.generated_text:", response.GeneratedText)
+	if len(strings.Fields(response.GeneratedText)) > 0 {
+		return response.GeneratedText, nil
 	}
 
 	return "", fmt.Errorf("no response from Hugging Face")
@@ -85,13 +89,14 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 				client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 					Conversation: proto.String("pong"),
 				})
-			} else if strings.HasPrefix(messageBody, "complete:") {
+				// } else if strings.HasPrefix(messageBody, "complete:") {
+			} else {
 				// Extract the command arguments
-				args := strings.Fields(messageBody)[1:]
+				// args := strings.Fields(messageBody)[1:]
 				// Join the arguments to form the input message for GPT
-				input := strings.Join(args, " ")
+				// input := strings.Join(args, " ")
 				// response := GenerateGPTResponse(input, gpt)
-				response, err := GetHuggingFaceResponse(input)
+				response, err := GetHuggingFaceResponse(messageBody)
 				if err != nil {
 					fmt.Printf("ChatCompletion error: %v\n", err)
 					return
@@ -127,6 +132,9 @@ func GenerateGPTResponse(input string, gpt *openai.Client) string {
 	return resp.Choices[0].Text
 }
 
+// func getpdfchatbot() {
+// 	// todo
+// }
 func main() {
 	err := godotenv.Load()
 	if err != nil {
