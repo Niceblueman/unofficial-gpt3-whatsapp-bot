@@ -10,10 +10,18 @@ require (
 )
 
 require (
+	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
+	github.com/golang-jwt/jwt/v5 v5.0.0 // indirect
+	github.com/google/go-cmp v0.5.7 // indirect
+)
+
+require (
 	filippo.io/edwards25519 v1.0.0 // indirect
+	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/olihough86/transformers-go v0.0.0-20230421144444-04d2e1d1f538 // indirect
+	github.com/russross/blackfriday/v2 v2.1.0
 	github.com/sashabaranov/go-openai v1.11.1 // indirect
 	go.mau.fi/libsignal v0.1.0 // indirect
 	golang.org/x/crypto v0.10.0 // indirect

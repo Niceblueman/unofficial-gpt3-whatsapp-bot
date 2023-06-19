@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/joho/godotenv"
@@ -23,6 +24,12 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 )
+
+type WhatsappClient struct {
+	client *whatsmeow.Client // Assuming you have a Client struct defined
+}
+
+var WhatsappCl = WhatsappClient{}
 
 const (
 	OpenAIAPIKeyEnvVar   = "OPENAI_API_KEY"
@@ -134,6 +141,7 @@ func GenerateGPTResponse(input string, gpt *openai.Client) (string, error) {
 // 	// todo
 // }
 func main() {
+	var wg sync.WaitGroup
 	err := godotenv.Load()
 	if err != nil {
 		panic("Failed to load .env file")
@@ -150,7 +158,7 @@ func main() {
 	}
 
 	clientLog := waLog.Stdout("Client", "INFO", true)
-	client := whatsmeow.NewClient(deviceStore, clientLog)
+	WhatsappCl.client = whatsmeow.NewClient(deviceStore, clientLog)
 	// Initialize OpenAI GPT
 	openaiAPIKey := os.Getenv(OpenAIAPIKeyEnvVar)
 	gpt := openai.NewClient(openaiAPIKey)
@@ -158,11 +166,11 @@ func main() {
 		panic(err)
 	}
 
-	client.AddEventHandler(GetEventHandler(client, gpt))
+	WhatsappCl.client.AddEventHandler(GetEventHandler(WhatsappCl.client, gpt))
 
-	if client.Store.ID == nil {
-		qrChan, _ := client.GetQRChannel(context.Background())
-		err = client.Connect()
+	if WhatsappCl.client.Store.ID == nil {
+		qrChan, _ := WhatsappCl.client.GetQRChannel(context.Background())
+		err = WhatsappCl.client.Connect()
 		if err != nil {
 			panic(err)
 		}
@@ -174,15 +182,15 @@ func main() {
 			}
 		}
 	} else {
-		err = client.Connect()
+		err = WhatsappCl.client.Connect()
 		if err != nil {
 			panic(err)
 		}
 	}
-
+	run_api(&wg)
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
 
-	client.Disconnect()
+	WhatsappCl.client.Disconnect()
 }
