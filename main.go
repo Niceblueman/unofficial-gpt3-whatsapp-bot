@@ -95,8 +95,8 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 				// args := strings.Fields(messageBody)[1:]
 				// Join the arguments to form the input message for GPT
 				// input := strings.Join(args, " ")
-				// response := GenerateGPTResponse(input, gpt)
-				response, err := GetHuggingFaceResponse(messageBody)
+				response, err := GenerateGPTResponse(messageBody, gpt)
+				// response, err := GetHuggingFaceResponse(messageBody)
 				if err != nil {
 					fmt.Printf("ChatCompletion error: %v\n", err)
 					return
@@ -111,25 +111,23 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 	}
 }
 
-func GenerateGPTResponse(input string, gpt *openai.Client) string {
+func GenerateGPTResponse(input string, gpt *openai.Client) (string, error) {
 
 	resp, err := gpt.CreateCompletion(
 		context.Background(),
 		openai.CompletionRequest{
-			Model:     openai.GPT3TextDavinci002,
-			MaxTokens: 4097,
+			Model:     openai.GPT3TextDavinci003,
+			MaxTokens: 150,
 			Prompt:    input,
 		},
 	)
 	if err != nil {
-		fmt.Printf("ChatCompletion error: %v\n", err)
-		return ""
+		return "nil", fmt.Errorf("chatCompletion error: %v", err)
 	}
 	if err != nil {
-		fmt.Println("Failed to generate GPT response:", err)
-		return ""
+		return "nil", fmt.Errorf("failed to generate GPT response: %v", err)
 	}
-	return resp.Choices[0].Text
+	return resp.Choices[0].Text, nil
 }
 
 // func getpdfchatbot() {
