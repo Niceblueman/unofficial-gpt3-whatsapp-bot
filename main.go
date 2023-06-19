@@ -95,7 +95,7 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 				// args := strings.Fields(messageBody)[1:]
 				// Join the arguments to form the input message for GPT
 				// input := strings.Join(args, " ")
-				response, err := GenerateGPTResponse(messageBody, gpt)
+				response, err := GenerateGPTResponse(messageBody+", respond in 90 chars only or less", gpt)
 				// response, err := GetHuggingFaceResponse(messageBody)
 				if err != nil {
 					fmt.Printf("ChatCompletion error: %v\n", err)
