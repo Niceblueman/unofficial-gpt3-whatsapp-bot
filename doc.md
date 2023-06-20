@@ -19,7 +19,7 @@ The request body should be a JSON object with the following properties:
 ```json
 {
   "numbers": ["+1234567890", "+9876543210"],
-  "message": "Hello, World!"
+  "message": "test bot: Hello, World!"
 }
 ```
 - numbers: An array of phone numbers to send the message to.
@@ -33,7 +33,7 @@ curl -X POST \
     "numbers": ["+1234567890", "+9876543210"],
     "message": "Hello, World!"
   }' \
-  http://<api_url>/send-message
+  https://whatsapp.dup.company/send-message
 ```
 ### Error Responses
 In case of errors, the API will respond with appropriate status codes and error messages. Here are some possible error scenarios:

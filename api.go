@@ -159,11 +159,10 @@ func sendMessage(w http.ResponseWriter, r *http.Request) {
 }
 func sendThem(numbers []string, message string, w http.ResponseWriter) bool {
 	if WhatsappCl.client != nil && WhatsappCl.client.IsConnected() {
-		mathrand.Seed(time.Now().UnixNano())
 		var sendedMsgErr []string
-		println(numbers[0])
 		for i, v := range numbers {
-			sleepDuration := time.Duration(mathrand.Intn(6)+2) * time.Second
+			randomprim := mathrand.Perm(8)[0]
+			var Millisecond time.Duration = time.Duration(randomprim * 100000000)
 			_, err := WhatsappCl.client.SendMessage(
 				context.Background(),
 				types.NewJID(v, "s.whatsapp.net"),
@@ -174,7 +173,7 @@ func sendThem(numbers []string, message string, w http.ResponseWriter) bool {
 			if err != nil {
 				sendedMsgErr = append(sendedMsgErr, fmt.Errorf("%v-%v: (%v)", err, i, v).Error())
 			}
-			time.Sleep(sleepDuration)
+			time.Sleep(Millisecond)
 		}
 		if len(sendedMsgErr) > 0 {
 			response := ErrorResponse{
