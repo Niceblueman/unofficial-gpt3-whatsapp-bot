@@ -2,9 +2,15 @@ version: '3'
 
 services:
   whatsapp-bot:
+    environment:
+      - OPENAI_API_KEY=..
+      - HUGGINGFACE_API_KEY=..
+      - GMAIL_PASSWORD=..
+      - GMAIL_EMAIL=..
+      - MANAGER_EMAIL=..
     build:
       context: .
       dockerfile: Dockerfile
     volumes:
       - ./store.db:/store.db
-      - .env:/.env
+      # - .env:/.env
