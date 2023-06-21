@@ -155,7 +155,7 @@ func GenerateGPTResponse(input string, user string, gpt *openai.Client) (string,
 		context.Background(),
 		openai.CompletionRequest{
 			Model:     openai.GPT3Dot5Turbo,
-			MaxTokens: 90,
+			MaxTokens: 120,
 			Prompt:    input,
 		},
 	)
