@@ -79,7 +79,8 @@ func run_api(wg *sync.WaitGroup) {
 	}
 	// init the api keys manager
 	_keymanager, _ = init_apikeymanager()
-	println(_keymanager.GenerateAPIKey("kimo", time.Now().AddDate(0, 3, 0)))
+	println(_keymanager.GenerateAPIKey("kimo", time.Now().AddDate(0, 12, 0)))
+	println(_keymanager.GenerateAPIKey("baddi", time.Now().AddDate(0, 12, 0)))
 	// Create a new Gin router
 	router := gin.Default()
 

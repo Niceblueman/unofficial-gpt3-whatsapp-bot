@@ -19,6 +19,6 @@ jobs:
         with:
             platforms: 'linux/amd64, darwin/amd64, windows/amd64'
             package: 'unofficial-gpt3-whatsapp-bot'
-            name: 'unofficial-gpt3-whatsapp-bot'
+            name: 'wbot_api'
             compress: 'true'
             dest: 'dist'
