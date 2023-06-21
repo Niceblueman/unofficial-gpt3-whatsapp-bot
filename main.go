@@ -81,7 +81,6 @@ func GetHuggingFaceResponse(prompt string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	println("response.generated_text:", response.GeneratedText)
 	if len(strings.Fields(response.GeneratedText)) > 0 {
 		return response.GeneratedText, nil
 	}
@@ -100,6 +99,16 @@ func contains(slice []string, item string) bool {
 
 	_, ok := set[item]
 	return ok
+}
+
+var _req = openai.ChatCompletionRequest{
+	Model: openai.GPT3Dot5Turbo,
+	Messages: []openai.ChatCompletionMessage{
+		{
+			Role:    openai.ChatMessageRoleSystem,
+			Content: "you are a helpful chatbot",
+		},
+	},
 }
 
 func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interface{}) {
@@ -150,22 +159,19 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 }
 
 func GenerateGPTResponse(input string, user string, gpt *openai.Client) (string, error) {
-
-	resp, err := gpt.CreateCompletion(
+	_req.Messages = append(_req.Messages, openai.ChatCompletionMessage{
+		Role:    openai.ChatMessageRoleUser,
+		Content: input,
+	})
+	resp, err := gpt.CreateChatCompletion(
 		context.Background(),
-		openai.CompletionRequest{
-			Model:     openai.GPT3Dot5Turbo,
-			MaxTokens: 120,
-			Prompt:    input,
-		},
+		_req,
 	)
 	if err != nil {
-		return "nil", fmt.Errorf("chatCompletion error: %v", err)
+		return "fails!!!", fmt.Errorf("chatCompletion error: %v", err)
 	}
-	if err != nil {
-		return "nil", fmt.Errorf("failed to generate GPT response: %v", err)
-	}
-	return resp.Choices[0].Text, nil
+	_req.Messages = append(_req.Messages, resp.Choices[0].Message)
+	return resp.Choices[0].Message.Content, nil
 }
 
 // func getpdfchatbot() {
