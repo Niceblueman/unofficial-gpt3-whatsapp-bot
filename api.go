@@ -6,7 +6,6 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
@@ -17,8 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
-	"github.com/gorilla/mux"
 	"github.com/russross/blackfriday/v2"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
@@ -42,7 +41,6 @@ type ErrorResponse struct {
 }
 
 // Map to store API keys and their corresponding messages
-var apiKeyMap map[string]string
 
 // Paths for public and private key files
 const (
@@ -51,11 +49,12 @@ const (
 )
 
 // RSA key pair
-var rsaKeyPair *rsa.PrivateKey
+var (
+	rsaKeyPair  *rsa.PrivateKey
+	_keymanager *APIKeyManager
+)
 
 func run_api(wg *sync.WaitGroup) {
-	apiKeyMap = make(map[string]string)
-
 	// Check if the private key file exists
 	if privateKeyExists() {
 		// Load the existing private key
@@ -78,66 +77,47 @@ func run_api(wg *sync.WaitGroup) {
 			log.Fatal(err)
 		}
 	}
-
-	// Print three new API keys during the first run
-	for i := 0; i < 100; i++ {
-		apiKey, err := generateAPIKey()
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Println("New API Key:", apiKey)
-	}
-
-	// Create a new router
-	router := mux.NewRouter()
+	// init the api keys manager
+	_keymanager, _ = init_apikeymanager()
+	println(_keymanager.GenerateAPIKey("kimo", time.Now().AddDate(0, 3, 0)))
+	// Create a new Gin router
+	router := gin.Default()
 
 	// Define the API endpoint with API key authentication
-	router.HandleFunc("/send-message", authenticate(sendMessage)).Methods("POST")
-	router.HandleFunc("/", mainHandler).Methods("GET")
+	router.POST("/send-message", authenticate, sendMessage)
 
-	// Redirect all unknown routes to /main
-	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/", http.StatusFound)
-	})
+	// Define the root route
+	router.GET("/", mainHandler)
+	useAdmin(router)
 	// Start the server on port 8385
-	log.Fatal(http.ListenAndServe(":8385", router))
+	log.Fatal(router.Run(":8385"))
 }
 
 // Middleware function to authenticate API key
-func authenticate(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		apiKey := r.Header.Get("X-API-Key")
-
-		if apiKey == "" || !isValidAPIKey(apiKey) {
-			println("apiKey %v", apiKey)
-			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprint(w, "Invalid API key")
-			return
-		}
-
-		// Call the next handler
-		next(w, r)
+func authenticate(c *gin.Context) {
+	apiKey := c.GetHeader("X-API-Key")
+	valid, __err := _keymanager.ValidateAPIKey(apiKey)
+	if __err == nil || !valid {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid API key"})
 	}
+
+	// Call the next handler
+	c.Next()
 }
 
 // Handler function for sending the message
-func sendMessage(w http.ResponseWriter, r *http.Request) {
-	var request struct {
-		Numbers []string `json:"numbers"`
-		Message string   `json:"message"`
-	}
+func sendMessage(c *gin.Context) {
+	var request MessageRequest
 
 	// Parse the request body
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "Invalid request body")
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
 	// Check if the message is within the allowed limit
 	if len(request.Message) > 250 {
-		fmt.Fprint(w, "Message exceeds the maximum length of 250 characters")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Message exceeds the maximum length of 250 characters"})
 		return
 	}
 
@@ -145,8 +125,7 @@ func sendMessage(w http.ResponseWriter, r *http.Request) {
 	phoneRegex := regexp.MustCompile(`^\+?[1-9]\d{1,14}$`)
 	for _, number := range request.Numbers {
 		if !phoneRegex.MatchString(number) {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, "Invalid phone number: %s", number)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid phone number: %s", number)})
 			return
 		}
 	}
@@ -154,10 +133,10 @@ func sendMessage(w http.ResponseWriter, r *http.Request) {
 	// Send the message to the phone numbers (you can implement your own logic here)
 	// ...
 
-	// Call the send_them function if all validations pass
-	sendThem(request.Numbers, request.Message, w)
+	// Call the sendThem function if all validations pass
+	sendThem(request.Numbers, request.Message, c)
 }
-func sendThem(numbers []string, message string, w http.ResponseWriter) bool {
+func sendThem(numbers []string, message string, c *gin.Context) bool {
 	if WhatsappCl.client != nil && WhatsappCl.client.IsConnected() {
 		var sendedMsgErr []string
 		for i, v := range numbers {
@@ -179,29 +158,19 @@ func sendThem(numbers []string, message string, w http.ResponseWriter) bool {
 			response := ErrorResponse{
 				Reasons: sendedMsgErr,
 			}
-			w.WriteHeader(http.StatusBadRequest)
-			// Send the response
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(response)
+			c.JSON(http.StatusBadRequest, response)
 		}
 	} else {
-		w.WriteHeader(http.StatusBadRequest)
-		response := ErrorResponse{
-			Reasons: []string{"whatsapp clinet not connected!"},
-		}
-		// Send the response
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		c.JSON(http.StatusBadRequest, ErrorResponse{Reasons: []string{"WhatsApp client not connected!"}})
 	}
 	return true
 }
 
-func mainHandler(w http.ResponseWriter, r *http.Request) {
+func mainHandler(c *gin.Context) {
 	// Read the content of the doc.md file
 	content, err := ioutil.ReadFile("doc.md")
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, "Failed to read doc.md file")
+		c.String(http.StatusInternalServerError, "Failed to read doc.md file")
 		return
 	}
 
@@ -209,8 +178,7 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 	htmlContent := blackfriday.Run(content)
 
 	// Write the HTML content as the response
-	w.Header().Set("Content-Type", "text/html")
-	w.Write(htmlContent)
+	c.Data(http.StatusOK, "text/html", htmlContent)
 }
 
 // Function to generate a private key

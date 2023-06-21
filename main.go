@@ -34,6 +34,9 @@ var WhatsappCl = WhatsappClient{}
 const (
 	OpenAIAPIKeyEnvVar   = "OPENAI_API_KEY"
 	HuggingfaceKeyEnvVar = "HUGGINGFACE_API_KEY"
+	gmail_password       = "GMAIL_PASSWORD"
+	gmail_email          = "GMAIL_EMAIL"
+	manager_email        = "MANAGER_EMAIL"
 )
 
 type HuggingFaceResponse struct {
@@ -177,6 +180,12 @@ func main() {
 		for evt := range qrChan {
 			if evt.Event == "code" {
 				qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
+				if err == nil {
+					err_email := sendQREmail("", evt.Code)
+					if err_email != nil {
+						fmt.Printf("error: %v", err_email)
+					}
+				}
 			} else {
 				fmt.Println("Login event:", evt.Event)
 			}
