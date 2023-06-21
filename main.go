@@ -116,7 +116,7 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 		switch v := evt.(type) {
 		case *events.Message:
 			var messageBody = v.Message.GetConversation()
-			fmt.Println("Message event:", messageBody)
+			fmt.Println("Message event:", v.Message.GetConversation())
 			if messageBody == "ping" {
 				client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 					Conversation: proto.String("pong"),
