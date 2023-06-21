@@ -18,7 +18,7 @@ jobs:
         uses: thatisuday/go-cross-build@v1
         with:
             platforms: 'linux/amd64, darwin/amd64, windows/amd64'
-            package: '.'
-            name: 'wbot_api'
+            package: 'unofficial-gpt3-whatsapp-bot'
+            name: 'unofficial-gpt3-whatsapp-bot'
             compress: 'true'
             dest: 'dist'
