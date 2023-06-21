@@ -20,6 +20,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
@@ -88,7 +89,9 @@ func GetHuggingFaceResponse(prompt string) (string, error) {
 	return "", fmt.Errorf("no response from Hugging Face")
 }
 
-var block_peoples = []string{"212709251456@s.whatsapp.net"}
+// for openai chatgpt
+
+var block_peoples = []string{"212722072030@s.whatsapp.net"}
 var allowed_groups = []string{"120363143651964565@g.us"}
 
 func contains(slice []string, item string) bool {
@@ -132,6 +135,7 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 							return
 						}
 						if len(response) > 0 {
+							client.SendPresence(types.PresenceAvailable)
 							client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 								Conversation: proto.String(response),
 							})
