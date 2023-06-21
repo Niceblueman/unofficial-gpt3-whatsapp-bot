@@ -98,8 +98,8 @@ func run_api(wg *sync.WaitGroup) {
 func authenticate(c *gin.Context) {
 	apiKey := c.GetHeader("X-API-Key")
 	valid, __err := _keymanager.ValidateAPIKey(apiKey)
-	if __err == nil || !valid {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid API key"})
+	if __err != nil || !valid {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": fmt.Sprintf("Invalid API key: %v", __err)})
 	}
 
 	// Call the next handler

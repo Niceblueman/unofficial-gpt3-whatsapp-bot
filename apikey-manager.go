@@ -66,7 +66,7 @@ func (m *APIKeyManager) ValidateAPIKey(tokenString string) (bool, error) {
 		err = token.Claims.Valid()
 		if err != nil {
 			// Handle the expiration error
-			return false, nil
+			return false, err
 		}
 		return true, nil
 	}
