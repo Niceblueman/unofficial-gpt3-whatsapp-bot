@@ -223,7 +223,7 @@ func GetImageBytecodeAndMIMEType(filePath string) ([]byte, string, error) {
 // for openai chatgpt
 
 // var block_peoples = []string{"212709251456@s.whatsapp.net"}
-var block_peoples = []string{"__"}
+var block_peoples = []string{"212722072030@s.whatsapp.net"}
 
 // var allowed_groups = []string{"120363159995578517@g.us"}
 var allowed_groups = []string{"120363143651964565@g.us"}

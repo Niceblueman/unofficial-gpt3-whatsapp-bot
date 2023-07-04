@@ -219,13 +219,18 @@ func sendMessage(c *gin.Context) {
 	}
 }
 func isAllowedFileType(mimeType string) bool {
+	fmt.Printf("Mimetype check: %s", mimeType)
 	allowedTypes := []string{
 		"application/pdf",
 		"text/csv",
 		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 		"application/msword",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheetNumber",
 		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.documentNumber",
 		"application/vnd.ms-excel",
+		"application/zip[GIN]",
+		"application/zip",
 		"image/png",
 		"image/jpeg",
 		"image/jpg",
