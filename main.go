@@ -499,23 +499,40 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 
 				}
 			default:
-				if !contains(block_peoples, v.Info.Sender.String()) && contains(allowed_groups, v.Info.Chat.String()) {
-					response, err := GenerateGPTResponse(messageBody, v.Info.Sender.String(), gpt)
-					// // response, err := GetHuggingFaceResponse(messageBody)
-					if err != nil {
-						fmt.Printf("ChatCompletion error: %v\n", err)
-						return
-					}
-					if len(response) > 0 {
-						// Create a buttons message.
-						client.SendPresence(types.PresenceAvailable)
-						_, err := client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-							Conversation: proto.String(response),
-						})
+				if !v.Info.Sender.IsEmpty() {
+					if !contains(block_peoples, v.Info.Sender.String()) && contains(allowed_groups, v.Info.Chat.String()) {
+						response, err := GenerateGPTResponse(messageBody, v.Info.Sender.String(), gpt)
+						// // response, err := GetHuggingFaceResponse(messageBody)
 						if err != nil {
-							fmt.Printf("ERROR Message: %v", err)
+							fmt.Printf("ChatCompletion error: %v\n", err)
+							return
+						}
+						if len(response) > 0 {
+							// Create a buttons message.
+							client.SendPresence(types.PresenceAvailable)
+							_, err := client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+								Conversation: proto.String(response),
+							})
+							if err != nil {
+								fmt.Printf("ERROR Message: %v", err)
+							}
 						}
 					}
+					// Extract the command arguments
+					// args := strings.Fields(messageBody)[1:]
+					// Join the arguments to form the input message for GPT
+					// input := strings.Join(args, " ")
+					// response, err := GenerateGPTResponse(messageBody+", respond in 90 chars only or less", gpt)
+					// // response, err := GetHuggingFaceResponse(messageBody)
+					// if err != nil {
+					// 	fmt.Printf("ChatCompletion error: %v\n", err)
+					// 	return
+					// }
+					// if len(response) > 0 {
+					// 	client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+					// 		Conversation: proto.String(response),
+					// 	})
+					// }
 				}
 			}
 		}
