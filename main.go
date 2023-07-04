@@ -143,25 +143,50 @@ func GetMaxThreeURLs(items []interface{}) []string {
 
 	return urls
 }
+func SplitToTokens(prompt string) []string {
+	const maxTokens = 4000
+	var tokens []string
+
+	// Split the prompt into individual words
+	words := strings.Fields(prompt)
+
+	// Iterate over the words and combine them into tokens
+	var tokenBuilder strings.Builder
+	for _, word := range words {
+		if tokenBuilder.Len()+len(word) > maxTokens {
+			// Token size exceeds the limit, append the current token and start a new one
+			tokens = append(tokens, tokenBuilder.String())
+			tokenBuilder.Reset()
+		}
+		tokenBuilder.WriteString(word)
+		tokenBuilder.WriteByte(' ')
+	}
+
+	// Append the last token
+	tokens = append(tokens, tokenBuilder.String())
+
+	return tokens
+}
 
 // analyzeCSVData analyzes the CSV data using ChatGPT 3.5 and returns a summary
 func analyzeCSVData(csvData string, gpt *openai.Client, command string) (string, error) {
 	prompt := fmt.Sprintf("CSV Data: \n"+csvData+"\n %s", command)
-
+	prompts := SplitToTokens(prompt)
+	_messages := make([]openai.ChatCompletionMessage, len(prompts)+1)
+	_messages = append(_messages, openai.ChatCompletionMessage{
+		Role:    openai.ChatMessageRoleSystem,
+		Name:    "Analyser",
+		Content: "you are the best csv data analysis",
+	})
+	for _, v := range prompts {
+		_messages = append(_messages, openai.ChatCompletionMessage{
+			Role:    openai.ChatMessageRoleUser,
+			Content: v,
+		})
+	}
 	resp, err := gpt.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-		Model: openai.GPT3Dot5Turbo16K0613,
-		Messages: []openai.ChatCompletionMessage{
-			{
-				Role:    openai.ChatMessageRoleSystem,
-				Name:    "Analyser",
-				Content: "you are the best csv data analysis",
-			},
-			{
-				Role:    openai.ChatMessageRoleUser,
-				Name:    "Analyser",
-				Content: prompt,
-			},
-		},
+		Model:    openai.GPT3Dot5Turbo,
+		Messages: _messages,
 	})
 	if err != nil {
 		return "", err
