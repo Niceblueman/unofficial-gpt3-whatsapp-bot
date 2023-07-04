@@ -224,7 +224,8 @@ func GetImageBytecodeAndMIMEType(filePath string) ([]byte, string, error) {
 
 // var block_peoples = []string{"212709251456@s.whatsapp.net"}
 var block_peoples = []string{"__"}
-var allowed_groups = []string{"120363159995578517@g.us"}
+// var allowed_groups = []string{"120363159995578517@g.us"}
+var allowed_groups = []string{"120363143651964565@g.us"}
 
 func contains(slice []string, item string) bool {
 	set := make(map[string]struct{}, len(slice))
@@ -497,7 +498,6 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 
 				}
 			default:
-				if !v.Info.Sender.IsEmpty() {
 					if !contains(block_peoples, v.Info.Sender.String()) && contains(allowed_groups, v.Info.Chat.String()) {
 						response, err := GenerateGPTResponse(messageBody, v.Info.Sender.String(), gpt)
 						// // response, err := GetHuggingFaceResponse(messageBody)
@@ -516,21 +516,6 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 							}
 						}
 					}
-					// Extract the command arguments
-					// args := strings.Fields(messageBody)[1:]
-					// Join the arguments to form the input message for GPT
-					// input := strings.Join(args, " ")
-					// response, err := GenerateGPTResponse(messageBody+", respond in 90 chars only or less", gpt)
-					// // response, err := GetHuggingFaceResponse(messageBody)
-					// if err != nil {
-					// 	fmt.Printf("ChatCompletion error: %v\n", err)
-					// 	return
-					// }
-					// if len(response) > 0 {
-					// 	client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-					// 		Conversation: proto.String(response),
-					// 	})
-					// }
 				}
 			}
 		}
