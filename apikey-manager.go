@@ -4,10 +4,12 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"log"
 	"time"
 
+	"github.com/GoAdminGroup/go-admin/template/types"
 	"github.com/dgrijalva/jwt-go"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -68,6 +70,47 @@ func (m *APIKeyManager) ValidateAPIKey(tokenString string) (bool, error) {
 			// Handle the expiration error
 			return false, err
 		}
+		return true, nil
+	}
+
+	return false, fmt.Errorf("invalid token")
+}
+
+// ValidateNewAPIKey validates a new API key token.
+func (m *APIKeyManager) ValidateNewAPIKey(tokenString string) (bool, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return &m.privateKey.PublicKey, nil
+	})
+
+	if err != nil {
+		return false, err
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		key := claims["key"].(string)
+		var apiKey APIKey
+		if err := m.db.Where("key = ?", key).First(&apiKey).Error; err != nil {
+			// Save the key in the database
+			apiKey.Key = key
+
+			// Parse expiration claim and set it as the deadline
+			if exp, ok := claims["exp"].(float64); ok {
+				apiKey.Deadline = time.Unix(int64(exp), 0)
+			}
+
+			// Set other APIKey fields as needed
+			apiKey.Details = "Additional details" // Example of populating the Details field
+
+			if err := m.db.Create(&apiKey).Error; err != nil {
+				return false, err
+			}
+		}
+
+		err = token.Claims.Valid()
+		if err != nil {
+			return false, err
+		}
+
 		return true, nil
 	}
 
@@ -139,6 +182,27 @@ func generateRandomKey() string {
 
 	return fmt.Sprintf("%x", key)
 }
+
+func (m *APIKeyManager) getKeys() []map[string]types.InfoItem {
+	var apiKeys []APIKey
+	var keys []map[string]types.InfoItem = []map[string]types.InfoItem{}
+	result := m.db.Find(&apiKeys)
+	if result.Error != nil {
+		return []map[string]types.InfoItem{}
+	}
+	for _, v := range apiKeys {
+		keys = append(keys, map[string]types.InfoItem{
+			"id":         {Content: template.HTML(fmt.Sprintf("%v", v.ID))},
+			"key":        {Content: template.HTML(v.Key)},
+			"deadline":   {Content: template.HTML(v.Deadline.String())},
+			"details":    {Content: template.HTML(v.Details)},
+			"created_at": {Content: template.HTML(v.CreatedAt.String())},
+			"updated_at": {Content: template.HTML(v.UpdatedAt.String())},
+		})
+	}
+	return keys
+}
+
 func init_apikeymanager() (*APIKeyManager, error) {
 	db, err := gorm.Open(sqlite.Open("api_keys.db"), &gorm.Config{})
 	if err != nil {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"html/template"
 	"time"
 
 	_ "github.com/GoAdminGroup/go-admin/adapter/gin"               // Import the adapter, it must be imported. If it is not imported, you need to define it yourself.
@@ -20,12 +21,20 @@ func useAdmin(r *gin.Engine) {
 	cfg := config.Config{
 		Databases: config.DatabaseList{
 			"default": {
-				Name:            "godmin",
+				Name:            "WhatsappApiAdmin",
 				MaxIdleConns:    50,
 				MaxOpenConns:    150,
 				ConnMaxLifetime: time.Hour,
 				Driver:          config.DriverSqlite,
 				File:            "./admin.db",
+			},
+			"apikeys": {
+				Name:            "Apikeys",
+				MaxIdleConns:    50,
+				MaxOpenConns:    150,
+				ConnMaxLifetime: time.Hour,
+				Driver:          config.DriverSqlite,
+				File:            "./api_keys.db",
 			},
 		},
 		// Store must be set and guaranteed to have write access, otherwise new administrator users cannot be added.
@@ -33,11 +42,14 @@ func useAdmin(r *gin.Engine) {
 			Path:   "./uploads",
 			Prefix: "uploads",
 		},
-		Domain:   "localhost:8385",
-		Language: language.EN,
+		UrlPrefix: "admin",
+		Logo:      template.HTML("<a href=\"/\" class=\"logo\"><img src=\"https://res.cloudinary.com/duzlh0xen/image/upload/v1687399177/icon-512-2_dragged_cyh0zp.png\" width=\"40\" height=\"40\"><span><strong>Wa</strong>admin</span></a>"),
+		MiniLogo:  template.HTML("<img src=\"https://res.cloudinary.com/duzlh0xen/image/upload/v1687399177/icon-512-2_dragged_cyh0zp.png\" width=\"30\" height=\"30\">"),
+		Domain:    "localhost:8385",
+		Language:  language.EN,
 	}
-
+	cfg.OpenAdminApi = true
 	// Add configuration and plugins, use the Use method to mount to the web framework.
-	_ = eng.AddConfig(&cfg).
-		Use(r)
+	_ = eng.AddConfig(&cfg).Use(r)
+	eng.HTML("GET", "/info/keys", GetKeytable)
 }

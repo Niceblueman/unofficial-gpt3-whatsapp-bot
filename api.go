@@ -11,14 +11,16 @@ import (
 	"io/ioutil"
 	"log"
 	mathrand "math/rand"
+	"mime/multipart"
 	"net/http"
-	"regexp"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
 	"github.com/russross/blackfriday/v2"
+	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
@@ -26,8 +28,9 @@ import (
 
 // Struct to represent the request body
 type MessageRequest struct {
-	Numbers []string `json:"numbers"`
-	Message string   `json:"message"`
+	Numbers []string         `form:"numbers"`
+	Message string           `form:"message"`
+	File    []multipart.File `form:"file"`
 }
 
 // Struct to represent the response
@@ -55,6 +58,8 @@ var (
 )
 
 func run_api(wg *sync.WaitGroup) {
+	// gin.SetMode(gin.ReleaseMode)
+	// gin.DefaultWriter = ioutil.Discard
 	// Check if the private key file exists
 	if privateKeyExists() {
 		// Load the existing private key
@@ -79,13 +84,14 @@ func run_api(wg *sync.WaitGroup) {
 	}
 	// init the api keys manager
 	_keymanager, _ = init_apikeymanager()
-	println(_keymanager.GenerateAPIKey("kimo", time.Now().AddDate(0, 12, 0)))
-	println(_keymanager.GenerateAPIKey("baddi", time.Now().AddDate(0, 12, 0)))
+	// println(_keymanager.GenerateAPIKey("kimo", time.Now().AddDate(0, 12, 0)))
+	// println(_keymanager.GenerateAPIKey("baddi", time.Now().AddDate(0, 12, 0)))
 	// Create a new Gin router
 	router := gin.Default()
 
 	// Define the API endpoint with API key authentication
 	router.POST("/send-message", authenticate, sendMessage)
+	router.POST("/keygen", genkey)
 
 	// Define the root route
 	router.GET("/", mainHandler)
@@ -107,52 +113,208 @@ func authenticate(c *gin.Context) {
 }
 
 // Handler function for sending the message
+func genkey(c *gin.Context) {
+	// Read the Protobuf message from the request body or any other source
+	data, err := ioutil.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+		return
+	}
+
+	// Create an instance of the KeyApiProto message
+	keyApi := &KeyApiProto{}
+
+	// Unmarshal the Protobuf data into the KeyApiProto message
+	err = proto.Unmarshal(data, keyApi)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to unmarshal Protobuf data"})
+		return
+	}
+	if len(keyApi.GetSignedKey()) > 0 {
+		valid, __err := _keymanager.ValidateNewAPIKey(keyApi.GetSignedKey())
+		if __err != nil || !valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": fmt.Sprintf("Invalid API key: %v", __err)})
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "Key API generated successfully"})
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to unmarshal Protobuf data"})
+	}
+	// Perform the necessary operations to generate the key API
+	// ...
+
+	// Return the response or perform any other actions
+
+}
+
+// Handler function for sending the message
 func sendMessage(c *gin.Context) {
-	var request MessageRequest
 
-	// Parse the request body
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+	// Parse the form data
+	err := c.Request.ParseMultipartForm(32 << 20) // 32MB max size
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid form data"})
 		return
 	}
 
-	// Check if the message is within the allowed limit
-	if len(request.Message) > 250 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Message exceeds the maximum length of 250 characters"})
+	// Extract the message field
+	message := c.Request.FormValue("message")
+	if len(message) > 600 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Message exceeds the maximum length of 600 characters"})
 		return
 	}
 
-	// Validate phone numbers
-	phoneRegex := regexp.MustCompile(`^\+?[1-9]\d{1,14}$`)
-	for _, number := range request.Numbers {
-		if !phoneRegex.MatchString(number) {
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid phone number: %s", number)})
+	// Extract the numbers field
+	var numbers []string = []string{}
+	if len(c.Request.Form["numbers"]) > 0 {
+		numbers = strings.Fields(c.Request.Form["numbers"][0])
+	}
+	if len(numbers) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Numbers field is required"})
+		return
+	}
+
+	// Handle the file field
+	files := c.Request.MultipartForm.File["file"]
+
+	var fileBytes []byte = []byte{}
+	var mimeType string = ""
+	var filename string = ""
+	var isfile bool = false
+	if len(files) > 0 {
+		filename = files[0].Filename
+		// Only process the first file in the slice
+		file, err := files[0].Open()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read the file"})
 			return
 		}
-	}
+		defer file.Close()
 
+		// Read the file bytes
+		fileBytes, err = ioutil.ReadAll(file)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read the file"})
+			return
+		}
+
+		// Get the file's MIME type
+		mimeType = files[0].Header.Get("Content-Type")
+
+		// Check if the file type is allowed
+		if !isAllowedFileType(mimeType) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file type. Allowed file types are: csv, pdf, docx, doc, xlsx, xls, png, jpeg, jpg, gif"})
+			return
+		}
+		isfile = true
+	}
 	// Send the message to the phone numbers (you can implement your own logic here)
 	// ...
 
 	// Call the sendThem function if all validations pass
-	sendThem(request.Numbers, request.Message, c)
+	done := sendThem(numbers, message, isfile, fileBytes, filename, mimeType, c)
+	if done {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Success!",
+		})
+	}
 }
-func sendThem(numbers []string, message string, c *gin.Context) bool {
+func isAllowedFileType(mimeType string) bool {
+	allowedTypes := []string{
+		"application/pdf",
+		"text/csv",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		"application/msword",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		"application/vnd.ms-excel",
+		"image/png",
+		"image/jpeg",
+		"image/jpg",
+		"image/gif",
+	}
+
+	for _, allowedType := range allowedTypes {
+		if strings.EqualFold(mimeType, allowedType) {
+			return true
+		}
+	}
+
+	return false
+}
+func isImage(mimeType string) bool {
+	allowedTypes := []string{
+		"image/png",
+		"image/jpeg",
+		"image/jpg",
+		"image/gif",
+	}
+
+	for _, allowedType := range allowedTypes {
+		if strings.EqualFold(mimeType, allowedType) {
+			return true
+		}
+	}
+
+	return false
+}
+func sendThem(numbers []string, message string, isfile bool, fileBytes []byte, filename string, mimitype string, c *gin.Context) bool {
 	if WhatsappCl.client != nil && WhatsappCl.client.IsConnected() {
 		var sendedMsgErr []string
 		for i, v := range numbers {
+			fmt.Printf("Number: %s, isfile: %v, filesize: %d, message: %s\n", v, isfile, len(fileBytes), message)
 			randomprim := mathrand.Perm(8)[0]
 			var Millisecond time.Duration = time.Duration(randomprim * 100000000)
+			var _message waProto.Message
+			switch {
+			case isfile && len(fileBytes) > 0:
+				if isImage(mimitype) {
+					if up, err := WhatsappCl.client.Upload(context.Background(), fileBytes, whatsmeow.MediaImage); err == nil {
+						_imagemessage := &waProto.ImageMessage{
+							Url:           &up.URL,
+							Mimetype:      proto.String(mimitype),
+							Caption:       proto.String(message),
+							FileSha256:    up.FileSHA256,
+							FileEncSha256: up.FileEncSHA256,
+							FileLength:    &up.FileLength,
+							MediaKey:      up.MediaKey,
+							DirectPath:    &up.DirectPath,
+						}
+						_message = waProto.Message{
+							ImageMessage: _imagemessage,
+						}
+					}
+				} else {
+					if up, err := WhatsappCl.client.Upload(context.Background(), fileBytes, whatsmeow.MediaDocument); err == nil {
+						_documentmessage := &waProto.DocumentMessage{
+							Url:           &up.URL,
+							Mimetype:      proto.String(mimitype),
+							Caption:       proto.String(message),
+							FileSha256:    up.FileSHA256,
+							FileName:      proto.String(filename),
+							FileEncSha256: up.FileEncSHA256,
+							FileLength:    &up.FileLength,
+							MediaKey:      up.MediaKey,
+							DirectPath:    &up.DirectPath,
+						}
+						_message = waProto.Message{
+							DocumentMessage: _documentmessage,
+						}
+					}
+
+				}
+			default:
+				_message = waProto.Message{
+					Conversation: proto.String(message),
+				}
+			}
 			_, err := WhatsappCl.client.SendMessage(
 				context.Background(),
 				types.NewJID(v, "s.whatsapp.net"),
-				&waProto.Message{
-					Conversation: proto.String(message),
-				},
+				&_message,
 			)
 			if err != nil {
 				sendedMsgErr = append(sendedMsgErr, fmt.Errorf("%v-%v: (%v)", err, i, v).Error())
 			}
+			fmt.Println("Number: %s, isfile: %v, filesize: %d\n", v, isfile, len(fileBytes))
 			time.Sleep(Millisecond)
 		}
 		if len(sendedMsgErr) > 0 {
