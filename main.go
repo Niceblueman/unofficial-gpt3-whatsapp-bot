@@ -224,6 +224,7 @@ func GetImageBytecodeAndMIMEType(filePath string) ([]byte, string, error) {
 
 // var block_peoples = []string{"212709251456@s.whatsapp.net"}
 var block_peoples = []string{"__"}
+
 // var allowed_groups = []string{"120363159995578517@g.us"}
 var allowed_groups = []string{"120363143651964565@g.us"}
 
@@ -498,22 +499,21 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 
 				}
 			default:
-					if !contains(block_peoples, v.Info.Sender.String()) && contains(allowed_groups, v.Info.Chat.String()) {
-						response, err := GenerateGPTResponse(messageBody, v.Info.Sender.String(), gpt)
-						// // response, err := GetHuggingFaceResponse(messageBody)
+				if !contains(block_peoples, v.Info.Sender.String()) && contains(allowed_groups, v.Info.Chat.String()) {
+					response, err := GenerateGPTResponse(messageBody, v.Info.Sender.String(), gpt)
+					// // response, err := GetHuggingFaceResponse(messageBody)
+					if err != nil {
+						fmt.Printf("ChatCompletion error: %v\n", err)
+						return
+					}
+					if len(response) > 0 {
+						// Create a buttons message.
+						client.SendPresence(types.PresenceAvailable)
+						_, err := client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+							Conversation: proto.String(response),
+						})
 						if err != nil {
-							fmt.Printf("ChatCompletion error: %v\n", err)
-							return
-						}
-						if len(response) > 0 {
-							// Create a buttons message.
-							client.SendPresence(types.PresenceAvailable)
-							_, err := client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-								Conversation: proto.String(response),
-							})
-							if err != nil {
-								fmt.Printf("ERROR Message: %v", err)
-							}
+							fmt.Printf("ERROR Message: %v", err)
 						}
 					}
 				}
