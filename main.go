@@ -149,7 +149,7 @@ func analyzeCSVData(csvData string, gpt *openai.Client, command string) (string,
 	prompt := fmt.Sprintf("CSV Data: \n"+csvData+"\n %s", command)
 
 	resp, err := gpt.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-		Model: openai.GPT4,
+		Model: openai.GPT3Dot5Turbo16K0613,
 		Messages: []openai.ChatCompletionMessage{
 			{
 				Role:    openai.ChatMessageRoleSystem,
