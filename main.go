@@ -22,8 +22,11 @@ import (
 	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal"
-	"github.com/mzbaulhaque/gois/pkg/scraper/services"
+	services "github.com/mzbaulhaque/gois/pkg/scraper/services"
 	openai "github.com/sashabaranov/go-openai"
+	"github.com/tmc/langchaingo/chains"
+	openailc "github.com/tmc/langchaingo/llms/openai"
+	"github.com/tmc/langchaingo/schema"
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/store/sqlstore"
@@ -45,7 +48,10 @@ const (
 	gmail_password       = "GMAIL_PASSWORD"
 	gmail_email          = "GMAIL_EMAIL"
 	manager_email        = "MANAGER_EMAIL"
+	maxTokens            = 4000
 )
+
+var globaldocs map[string][]schema.Document = map[string][]schema.Document{}
 
 type HuggingFaceResponse struct {
 	GeneratedText string `json:"generated_text"`
@@ -144,7 +150,7 @@ func GetMaxThreeURLs(items []interface{}) []string {
 	return urls
 }
 func SplitToTokens(prompt string) []string {
-	const maxTokens = 4000
+	const maxTokens = 3000
 	var tokens []string
 
 	// Split the prompt into individual words
@@ -169,34 +175,60 @@ func SplitToTokens(prompt string) []string {
 }
 
 // analyzeCSVData analyzes the CSV data using ChatGPT 3.5 and returns a summary
-func analyzeCSVData(csvData string, gpt *openai.Client, command string) (string, error) {
-	prompt := fmt.Sprintf("CSV Data: \n"+csvData+"\n %s", command)
-	prompts := SplitToTokens(prompt)
-	_messages := make([]openai.ChatCompletionMessage, len(prompts)+1)
-	_messages = append(_messages, openai.ChatCompletionMessage{
-		Role:    openai.ChatMessageRoleSystem,
-		Name:    "Analyser",
-		Content: "you are the best csv data analysis",
-	})
-	for _, v := range prompts {
-		_messages = append(_messages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleUser,
-			Content: v,
-		})
+func analyzeCSVData(csvData string, gpt *openai.Client, command string, user string) (string, error) {
+	openaiAPIKey := os.Getenv(OpenAIAPIKeyEnvVar)
+	llm, err := openailc.New(openailc.WithToken(openaiAPIKey))
+	if err != nil {
+		return "", err
 	}
-	resp, err := gpt.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-		Model:    openai.GPT3Dot5Turbo,
-		Messages: _messages,
+	_docs, err := ConvertCSVToDocs(csvData)
+	if err != nil {
+		return "", err
+	}
+	globaldocs[user] = _docs[:1]
+	// Prompt the LLM using the docs
+	stuffQAChain := chains.LoadStuffQA(llm)
+	result, err := chains.Call(context.Background(), stuffQAChain, map[string]interface{}{
+		"input_documents": globaldocs[user],
+		"question":        command,
 	})
 	if err != nil {
 		return "", err
 	}
-
-	if len(resp.Choices) > 0 {
-		output := resp.Choices[0].Message.Content
+	if len(result) > 0 {
+		PrintInterface(result["text"])
+		output := result["text"].(string)
 		return output, nil
 	}
 	return "", nil
+}
+
+// analyzeCSVData analyzes the CSV data using ChatGPT 3.5 and returns a summary
+func askdocument(gpt *openai.Client, command string, user string) (string, error) {
+	openaiAPIKey := os.Getenv(OpenAIAPIKeyEnvVar)
+	llm, err := openailc.New(openailc.WithToken(openaiAPIKey))
+	if err != nil {
+		return "", err
+	}
+	if _docs, ok := globaldocs[user]; ok {
+		globaldocs[user] = _docs
+		// Prompt the LLM using the docs
+		stuffQAChain := chains.LoadStuffQA(llm)
+		result, err := chains.Call(context.Background(), stuffQAChain, map[string]interface{}{
+			"input_documents": _docs,
+			"question":        command,
+		})
+		if err != nil {
+			return "", err
+		}
+		if len(result) > 0 {
+			output := result["text"].(string)
+			return output, nil
+		}
+		return "", nil
+	} else {
+		return "", fmt.Errorf("you have no document in memory to QA!")
+	}
 }
 func ConvertToFlickrResult(data interface{}) (services.GoogleResult, bool) {
 	result := services.GoogleResult{}
@@ -250,9 +282,10 @@ func GetImageBytecodeAndMIMEType(filePath string) ([]byte, string, error) {
 var block_peoples = []string{
 	types.NewJID("212722072030", "s.whatsapp.net").String(),
 	types.NewJID("212709251456", "s.whatsapp.net").String(),
-	"212709251456.0:27@s.whatsapp.net"}
+}
 
 // var allowed_groups = []string{"120363159995578517@g.us"}
+
 var allowed_groups = []string{"120363143651964565@g.us"}
 
 func contains(slice []string, item string) bool {
@@ -374,16 +407,18 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 					switch DocumentWithCaption.GetMimetype() {
 					case "text/csv":
 						if csvfile, csvfileerr := GetTextFormatFromCSV(bytes); csvfileerr == nil {
-							if res, err := analyzeCSVData(csvfile, gpt, DocumentWithCaption.GetCaption()); err == nil {
+							if res, err := analyzeCSVData(csvfile, gpt, DocumentWithCaption.GetCaption(), v.Info.Sender.String()); err == nil {
 								client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 									Conversation: proto.String(res),
 								})
 							} else {
-								fmt.Printf("analyzeCSVData: %v", err)
+								client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+									Conversation: proto.String(fmt.Sprintf("__%s__", err.Error())),
+								})
 							}
 						} else {
 							client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-								Conversation: proto.String(csvfileerr.Error()),
+								Conversation: proto.String(fmt.Sprintf("__%s__", csvfileerr.Error())),
 							})
 						}
 					default:
@@ -400,6 +435,18 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 				client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 					Conversation: proto.String("pong"),
 				})
+			case strings.HasPrefix(strings.ToLower(messageBody), "/askdoc"):
+				args := strings.Fields(messageBody)[1:]
+				the_rest := strings.Join(args, " ")
+				if res, err := askdocument(gpt, the_rest, v.Info.Sender.String()); err == nil {
+					client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+						Conversation: proto.String(res),
+					})
+				} else {
+					client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+						Conversation: proto.String(fmt.Sprintf("__%s__", err.Error())),
+					})
+				}
 			case strings.HasPrefix(strings.ToLower(messageBody), "/reset"):
 				if _, ok := _req[v.Info.Sender.String()]; ok {
 					var _allmessages []openai.ChatCompletionMessage = []openai.ChatCompletionMessage{
@@ -650,4 +697,16 @@ func main() {
 	<-c
 
 	WhatsappCl.client.Disconnect()
+}
+
+// ConvertCSVToDocs converts CSV file content into a slice of schema.Document objects,
+// where each document represents a page of 100 rows from the CSV file.
+func ConvertCSVToDocs(csvContent string) ([]schema.Document, error) {
+	records := SplitToTokens(csvContent)
+	var docs []schema.Document = []schema.Document{}
+	for _, pageContent := range records {
+		docs = append(docs, schema.Document{PageContent: pageContent})
+	}
+
+	return docs, nil
 }
