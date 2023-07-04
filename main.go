@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"mime"
 	"net/http"
 	"os"
@@ -242,11 +241,11 @@ func contains(slice []string, item string) bool {
 }
 
 // GetTextFormatFromCSV converts CSV file bytes to text format and removes empty rows
-func GetTextFormatFromCSV(csvData []byte) string {
+func GetTextFormatFromCSV(csvData []byte) (string, error) {
 	reader := csv.NewReader(bytes.NewReader(csvData))
 	lines, err := reader.ReadAll()
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
 
 	var output strings.Builder
@@ -271,7 +270,7 @@ func GetTextFormatFromCSV(csvData []byte) string {
 		}
 	}
 
-	return output.String()
+	return output.String(), nil
 }
 
 var _req = map[string]openai.ChatCompletionRequest{}
@@ -349,13 +348,18 @@ func GetEventHandler(client *whatsmeow.Client, gpt *openai.Client) func(interfac
 				if bytes, _error := client.Download(DocumentWithCaption); _error == nil {
 					switch DocumentWithCaption.GetMimetype() {
 					case "text/csv":
-						csvfile := GetTextFormatFromCSV(bytes)
-						if res, err := analyzeCSVData(csvfile, gpt, DocumentWithCaption.GetCaption()); err == nil {
-							client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-								Conversation: proto.String(res),
-							})
+						if csvfile, csvfileerr := GetTextFormatFromCSV(bytes); csvfileerr == nil {
+							if res, err := analyzeCSVData(csvfile, gpt, DocumentWithCaption.GetCaption()); err == nil {
+								client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+									Conversation: proto.String(res),
+								})
+							} else {
+								fmt.Printf("analyzeCSVData: %v", err)
+							}
 						} else {
-							fmt.Printf("analyzeCSVData: %v", err)
+							client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+								Conversation: proto.String(csvfileerr.Error()),
+							})
 						}
 					default:
 						client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
